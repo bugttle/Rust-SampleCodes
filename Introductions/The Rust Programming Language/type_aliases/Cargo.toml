@@ -1,0 +1,6 @@
+[package]
+name = "type_aliases"
+version = "0.1.0"
+authors = ["UQ Times <uqtimes@gmail.com>"]
+
+[dependencies]
