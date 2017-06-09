@@ -1,0 +1,6 @@
+[package]
+name = "casting_between_types"
+version = "0.1.0"
+authors = ["UQ Times <uqtimes@gmail.com>"]
+
+[dependencies]
