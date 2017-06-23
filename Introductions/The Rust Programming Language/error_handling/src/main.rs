@@ -7,6 +7,11 @@
 use std::env;
 use std::num::ParseIntError;
 use std::result;
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+use std::io;
+use std::num;
 
 fn main() {
     ////////////////////////////////////////////////////////////////////////////////
@@ -143,4 +148,128 @@ fn main() {
     // fn double_number(number_str: &str) -> Result<i32> {
     //     unimplemented!();
     // }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Working with multiple error types
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Composing `Option` and `Result`
+
+    fn double_arg(mut argv: env::Args) -> Result<i32, String> {
+        argv.nth(1)
+            .ok_or("Please give at least one argument".to_owned())
+            .and_then(|arg| arg.parse::<i32>().map_err(|err| err.to_string()))
+            .map(|n| 2 * n)
+    }
+
+    match double_arg(env::args()) {
+        Ok(n) => println!("{}", n),
+        Err(err) => println!("Error: {}", err),
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // The limits of combinators
+
+    fn file_double<P: AsRef<Path>>(file_path: P) -> i32 {
+        let mut file = File::open(file_path).unwrap(); // error 1
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).unwrap(); // error 2
+        let n: i32 = contents.trim().parse().unwrap(); // error 3
+        2 * n
+    }
+
+    // let doubled = file_double("foobar");
+    // println!("{}", doubled);
+
+
+    fn file_double2<P: AsRef<Path>>(file_path: P) -> Result<i32, String> {
+        File::open(file_path)
+            .map_err(|err| err.to_string())
+            .and_then(|mut file| {
+                let mut contents = String::new();
+                file.read_to_string(&mut contents)
+                    .map_err(|err| err.to_string())
+                    .map(|_| contents)
+            })
+            .and_then(|contents| {
+                contents.trim().parse::<i32>()
+                        .map_err(|err| err.to_string())
+            })
+            .map(|n| 2 * n)
+    }
+
+    match file_double2("foobar") {
+        Ok(n) => println!("{}", n),
+        Err(err) => println!("Error: {}", err),
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Early returns
+
+    fn file_double3<P: AsRef<Path>>(file_path: P) -> Result<i32, String> {
+        let mut file = match File::open(file_path) {
+            Ok(file) => file,
+            Err(err) => return Err(err.to_string()),
+        };
+        let mut contents = String::new();
+        if let Err(err) = file.read_to_string(&mut contents) {
+            return Err(err.to_string());
+        }
+        let n: i32 = match contents.trim().parse() {
+            Ok(n) => n,
+            Err(err) => return Err(err.to_string()),
+        };
+        Ok(2 * n)
+    }
+
+    match file_double3("foobar") {
+        Ok(n) => println!("{}", n),
+        Err(err) => println!("Error: {}", err),
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // The `try!` macro
+
+    fn file_double4<P: AsRef<Path>>(file_path: P) -> Result<i32, String> {
+        let mut file = try!(File::open(file_path).map_err(|e| e.to_string()));
+        let mut contents = String::new();
+        try!(file.read_to_string(&mut contents).map_err(|e| e.to_string()));
+        let n = try!(contents.trim().parse::<i32>().map_err(|e| e.to_string()));
+        Ok(2 * n)
+    }
+
+    match file_double4("foobar") {
+        Ok(n) => println!("{}", n),
+        Err(err) => println!("Error: {}", err),
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Defining your own error type
+
+    // We derivce `Debug` because all types should probably derive `Debug`.
+    // This gives us a reasonable human readable description of `CliError` values.
+    #[derive(Debug)]
+    enum CliError {
+        Io(io::Error),
+        Parse(num::ParseIntError),
+    }
+
+    fn file_double5<P: AsRef<Path>>(file_path: P) -> Result<i32, CliError> {
+        let mut file = try!(File::open(file_path).map_err(CliError::Io));
+        let mut contents = String::new();
+        try!(file.read_to_string(&mut contents).map_err(CliError::Io));
+        let n: i32 = try!(contents.trim().parse().map_err(CliError::Parse));
+        Ok(2 * n)
+    }
+
+    match file_double5("foobar") {
+        Ok(n) => println!("{}", n),
+        Err(err) => println!("Error: {:?}", err),
+    }
 }
