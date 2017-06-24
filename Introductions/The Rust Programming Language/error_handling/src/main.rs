@@ -8,10 +8,13 @@ use std::env;
 use std::num::ParseIntError;
 use std::result;
 use std::fs::File;
-use std::io::Read;
+use std::io::{self, Read};
 use std::path::Path;
-use std::io;
+use std::fmt;
 use std::num;
+use std::error;
+use std::error::Error;
+use std::fs;
 
 fn main() {
     ////////////////////////////////////////////////////////////////////////////////
@@ -271,5 +274,114 @@ fn main() {
     match file_double5("foobar") {
         Ok(n) => println!("{}", n),
         Err(err) => println!("Error: {:?}", err),
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Standard library traits used for error handling
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // The `Error` trait
+
+    impl fmt::Display for CliError {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match *self {
+                // Both underlyng errors already impl `Display`, so we defer to
+                // heir implementations.
+                CliError::Io(ref err) => write!(f, "IO error: {}", err),
+                CliError::Parse(ref err) => write!(f, "Parse error: {}", err),
+            }
+        }
+    }
+
+    impl error::Error for CliError {
+        fn description(&self) -> &str {
+            // Both underlying errors already impl `Error`, so we defer to their
+            // implementations.
+            match *self {
+                CliError::Io(ref err) => err.description(),
+                CliError::Parse(ref err) => err.description(),
+            }
+        }
+
+        fn cause(&self) -> Option<&error::Error> {
+            match *self {
+                // N.B. Both of these implicitly cast `err` from their concrete
+                // types (eigher `&io::Error` or `&num::ParseIntError`)
+                // to a trait object `&Error`. This works because both error types
+                // implement `Error`.
+                CliError::Io(ref err) => Some(err),
+                CliError::Parse(ref err) => Some(err),
+            }
+        }
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // The `From` trait
+
+    let string: String = From::from("foo");
+    let bytes: Vec<u8> = From::from("foo");
+    let cow: ::std::borrow::Cow<str> = From::from("foo");
+
+    // We have to jump through some hoops to actually get error values:
+    let io_err: io::Error = io::Error::last_os_error();
+    let parse_err: num::ParseIntError = "not a number".parse::<i32>().unwrap_err();
+
+    // OK, here are the conversions:
+    let err1: Box<Error> = From::from(io_err);
+    let err2: Box<Error> = From::from(parse_err);
+
+    fn file_double6<P: AsRef<Path>>(file_path: P) -> Result<i32, String> {
+        let mut file = try!(File::open(file_path).map_err(|e| e.to_string()));
+        let mut contents = String::new();
+        try!(file.read_to_string(&mut contents).map_err(|e| e.to_string()));
+        let n = try!(contents.trim().parse::<i32>().map_err(|e| e.to_string()));
+        Ok(2 * n)
+    }
+
+    fn file_double7<P: AsRef<Path>>(file_path: P) -> Result<i32, Box<Error>> {
+        let mut file = try!(File::open(file_path));
+        let mut contents = String::new();
+        try!(file.read_to_string(&mut contents));
+        let n = try!(contents.trim().parse::<i32>());
+        Ok(2 * n)
+    }
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Composing custom error types
+
+    impl From<io::Error> for CliError {
+        fn from(err: io::Error) -> CliError {
+            CliError::Io(err)
+        }
+    }
+
+    impl From<num::ParseIntError> for CliError {
+        fn from(err: num::ParseIntError) -> CliError {
+            CliError::Parse(err)
+        }
+    }
+
+    fn file_double8<P: AsRef<Path>>(file_path: P) -> Result<i32, CliError> {
+        let mut file = try!(File::open(file_path));
+        let mut contents = String::new();
+        try!(file.read_to_string(&mut contents));
+        let n : i32 = try!(contents.trim().parse());
+        Ok(2 * n)
+    }
+
+    enum CliErrorWithFloat {
+        Io(io::Error),
+        ParseInt(num::ParseIntError),
+        ParseFloat(num::ParseFloatError),
+    }
+
+    impl From<num::ParseFloatError> for CliErrorWithFloat {
+        fn from(err: num::ParseFloatError) -> CliErrorWithFloat {
+            CliErrorWithFloat::ParseFloat(err)
+        }
     }
 }
