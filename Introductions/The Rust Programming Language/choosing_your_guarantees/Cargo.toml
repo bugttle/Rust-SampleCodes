@@ -1,0 +1,6 @@
+[package]
+name = "choosing_your_guarantees"
+version = "0.1.0"
+authors = ["UQ Times <uqtimes@gmail.com>"]
+
+[dependencies]
